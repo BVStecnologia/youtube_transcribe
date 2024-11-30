@@ -1,7 +1,17 @@
-#!/bin/bash
+﻿#!/bin/sh
+# Configurar DNS
+echo "nameserver 8.8.8.8" > /etc/resolv.conf
+echo "nameserver 8.8.4.4" >> /etc/resolv.conf
 
-# Iniciar o worker Celery em background
-celery -A tasks worker --loglevel=info &
+# Configurar VPN
+echo "$PROTON_USERNAME" > /auth.txt
+echo "$PROTON_PASSWORD" >> /auth.txt
 
-# Iniciar a API
-uvicorn api:app --host 0.0.0.0 --port 8080
+# Iniciar VPN
+openvpn --config /etc/openvpn/vpn.ovpn --auth-user-pass /auth.txt --daemon
+
+# Esperar VPN iniciar
+sleep 10
+
+# Iniciar aplicação
+uvicorn api:app --host 0.0.0.0 --port $PORT

@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 
 load_dotenv()
 
-SUPABASE_URL = os.getenv('SUPABASE_URL', "https://suqjifkhmekcdflwowiw.supabase.co")
-SUPABASE_KEY = os.getenv('SUPABASE_KEY')
+SUPABASE_URL = "https://suqjifkhmekcdflwowiw.supabase.co"
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 
 if not SUPABASE_KEY:
     raise ValueError("SUPABASE_KEY não encontrada nas variáveis de ambiente")
@@ -24,12 +24,13 @@ supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 def get_transcript_with_retry(video_id, max_retries=3):
     for attempt in range(max_retries):
         try:
-            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
+            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=["pt", "en"])
             return transcript
         except Exception as e:
+            logger.error(f"Tentativa {attempt + 1} falhou: {str(e)}")
             if attempt == max_retries - 1:
                 raise e
-            time.sleep(uniform(1, 3))
+            time.sleep(uniform(2, 5))
             continue
 
 def format_timestamp(seconds):
@@ -39,7 +40,7 @@ def format_timestamp(seconds):
 
 def check_video_exists(video_id):
     try:
-        result = supabase.table('Videos_trancricao').select("*").eq('video_id', video_id).execute()
+        result = supabase.table("Videos_trancricao").select("*").eq("video_id", video_id).execute()
         logger.info(f"Resultado da verificação no Supabase: {result.data}")
         return len(result.data) > 0, result.data[0] if result.data else None
     except Exception as e:
@@ -49,13 +50,13 @@ def check_video_exists(video_id):
 def save_to_supabase(video_id, transcription, contem):
     try:
         data = {
-            'video_id': video_id,
-            'trancription': transcription,
-            'contem': contem,
-            'created_at': datetime.utcnow().isoformat()
+            "video_id": video_id,
+            "trancription": transcription,
+            "contem": contem,
+            "created_at": datetime.utcnow().isoformat()
         }
         logger.info(f"Tentando salvar no Supabase: {data}")
-        result = supabase.table('Videos_trancricao').insert(data).execute()
+        result = supabase.table("Videos_trancricao").insert(data).execute()
         logger.info(f"Dados salvos no Supabase para o vídeo {video_id}")
         return result
     except Exception as e:
@@ -65,7 +66,7 @@ def save_to_supabase(video_id, transcription, contem):
 def process_video(url):
     try:
         logger.info(f"Iniciando processamento do vídeo: {url}")
-        video_id = url.split('v=')[1] if 'v=' in url else url.split('/')[-1]
+        video_id = url.split("v=")[1] if "v=" in url else url.split("/")[-1]
         logger.info(f"ID do vídeo extraído: {video_id}")
 
         exists, existing_data = check_video_exists(video_id)
@@ -73,8 +74,8 @@ def process_video(url):
             logger.info(f"Vídeo {video_id} já existe no banco de dados")
             return {
                 "video_id": video_id,
-                "transcription": existing_data['trancription'],
-                "contem": existing_data['contem'],
+                "transcription": existing_data["trancription"],
+                "contem": existing_data["contem"],
                 "message": "Vídeo já processado anteriormente"
             }
 
@@ -84,18 +85,18 @@ def process_video(url):
 
             formatted_segments = []
             for segment in transcript:
-                timestamp = format_timestamp(segment['start'])
-                segment_text = segment['text'].strip()
+                timestamp = format_timestamp(segment["start"])
+                segment_text = segment["text"].strip()
                 formatted_segments.append(f"[{timestamp}] {segment_text}")
 
-            full_text = '\n\n'.join(formatted_segments)
+            full_text = "\n\n".join(formatted_segments)
             final_text = f"""TRANSCRIÇÃO DO VÍDEO
 ID: {video_id}
-{'=' * 50}
+{"=" * 50}
 
 {full_text}
 
-{'=' * 50}"""
+{"=" * 50}"""
 
             save_to_supabase(video_id, final_text, True)
             logger.info("Transcrição salva com sucesso")
@@ -120,29 +121,3 @@ ID: {video_id}
     except Exception as e:
         logger.error(f"Erro em process_video: {str(e)}")
         raise
-# main.py
-# ... (manter imports anteriores)
-
-def get_transcript_with_retry(video_id, max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            # Primeira tentativa: método direto
-            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
-            return transcript
-        except Exception as first_error:
-            logger.warning(f"Tentativa {attempt+1} falhou: {str(first_error)}")
-            try:
-                # Segunda tentativa: usando list_transcripts
-                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-                for lang in ['pt', 'pt-BR', 'en']:
-                    try:
-                        transcript = transcript_list.find_transcript([lang]).fetch()
-                        return transcript
-                    except:
-                        continue
-            except Exception as e:
-                if attempt == max_retries - 1:
-                    raise e
-                time.sleep(uniform(2, 5))  # Espera maior entre tentativas
-                continue
-    raise Exception("Não foi possível obter a transcrição após várias tentativas")
