@@ -120,3 +120,29 @@ ID: {video_id}
     except Exception as e:
         logger.error(f"Erro em process_video: {str(e)}")
         raise
+# main.py
+# ... (manter imports anteriores)
+
+def get_transcript_with_retry(video_id, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            # Primeira tentativa: método direto
+            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
+            return transcript
+        except Exception as first_error:
+            logger.warning(f"Tentativa {attempt+1} falhou: {str(first_error)}")
+            try:
+                # Segunda tentativa: usando list_transcripts
+                transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
+                for lang in ['pt', 'pt-BR', 'en']:
+                    try:
+                        transcript = transcript_list.find_transcript([lang]).fetch()
+                        return transcript
+                    except:
+                        continue
+            except Exception as e:
+                if attempt == max_retries - 1:
+                    raise e
+                time.sleep(uniform(2, 5))  # Espera maior entre tentativas
+                continue
+    raise Exception("Não foi possível obter a transcrição após várias tentativas")
