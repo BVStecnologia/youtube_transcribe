@@ -3,5 +3,3 @@ uvicorn
 python-dotenv
 youtube-transcript-api
 supabase
-celery[redis]
-redis
