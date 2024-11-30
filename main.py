@@ -1,6 +1,8 @@
-# main.py
+﻿# main.py
 import os
 import logging
+import time
+from random import uniform
 from youtube_transcript_api import YouTubeTranscriptApi
 from dotenv import load_dotenv
 from supabase import create_client
@@ -18,6 +20,17 @@ if not SUPABASE_KEY:
     raise ValueError("SUPABASE_KEY não encontrada nas variáveis de ambiente")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+def get_transcript_with_retry(video_id, max_retries=3):
+    for attempt in range(max_retries):
+        try:
+            transcript = YouTubeTranscriptApi.get_transcript(video_id, languages=['pt', 'en'])
+            return transcript
+        except Exception as e:
+            if attempt == max_retries - 1:
+                raise e
+            time.sleep(uniform(1, 3))
+            continue
 
 def format_timestamp(seconds):
     minutes = int(seconds) // 60
@@ -66,29 +79,11 @@ def process_video(url):
             }
 
         try:
-            transcript_list = YouTubeTranscriptApi.list_transcripts(video_id)
-            logger.info(f"Transcrições disponíveis para {video_id}:")
-            
-            # Log detalhado das transcrições
-            for transcript in transcript_list._manually_created_transcripts.values():
-                logger.info(f"- Manual: {transcript.language_code}")
-            for transcript in transcript_list._generated_transcripts.values():
-                logger.info(f"- Gerada: {transcript.language_code}")
-
-            # Tentar obter transcrição em português primeiro
-            try:
-                transcript = transcript_list.find_transcript(['pt-BR', 'pt'])
-                language_used = 'pt'
-            except:
-                # Se não encontrar em português, tenta em inglês
-                transcript = transcript_list.find_transcript(['en'])
-                language_used = 'en'
-
-            text = transcript.fetch()
-            logger.info(f"Transcrição obtida com sucesso em {language_used}")
+            transcript = get_transcript_with_retry(video_id)
+            logger.info(f"Transcrição obtida com sucesso para {video_id}")
 
             formatted_segments = []
-            for segment in text:
+            for segment in transcript:
                 timestamp = format_timestamp(segment['start'])
                 segment_text = segment['text'].strip()
                 formatted_segments.append(f"[{timestamp}] {segment_text}")
@@ -96,7 +91,6 @@ def process_video(url):
             full_text = '\n\n'.join(formatted_segments)
             final_text = f"""TRANSCRIÇÃO DO VÍDEO
 ID: {video_id}
-IDIOMA: {language_used}
 {'=' * 50}
 
 {full_text}
@@ -109,8 +103,7 @@ IDIOMA: {language_used}
             return {
                 "video_id": video_id,
                 "transcription": final_text,
-                "contem": True,
-                "language_used": language_used
+                "contem": True
             }
 
         except Exception as e:
